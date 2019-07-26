@@ -2,8 +2,6 @@
 
 static int current_cost_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
     bitbuffer_invert(bitbuffer);
-    bitrow_t *bb = bitbuffer->bb;
-    uint8_t *b = bb[0];
 
     data_t *data;
 
@@ -16,11 +14,27 @@ static int current_cost_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
         0x5d, //45 (! last 3 bits is not init)
     };
     unsigned int start_pos = bitbuffer_search(bitbuffer, 0, 0, init_pattern, 45);
+    const char *model = _X("CurrentCost-TX","CurrentCost TX");
 
     if(start_pos == bitbuffer->bits_per_row[0]){
-        return 0;
+        // check alternate preamble for Sensable sensors
+        uint8_t init_pattern2[] = {
+            0xaa, //8
+            0xaa, //8
+            0xaa, //16
+            0xd2, //24
+            0x2b, //32
+        };
+        start_pos = bitbuffer_search(bitbuffer, 0, 0, init_pattern2, 40);
+
+        if(start_pos == bitbuffer->bits_per_row[0]){
+            return 0;
+        }
+        start_pos += 40;
+        model = _X("CurrentCost-Sensable","CurrentCost Sensable");
+    } else {
+        start_pos += 45;
     }
-    start_pos += 45;
 
     bitbuffer_t packet_bits = {0};
 
@@ -39,7 +53,7 @@ static int current_cost_callback(r_device *decoder, bitbuffer_t *bitbuffer) {
         if((packet[4] & 0x80) == 128) { watt1 = (packet[4] & 0x7F) << 8 | packet[5] ; }
         if((packet[6] & 0x80) == 128) { watt2 = (packet[6] & 0x7F) << 8 | packet[7] ; }
         data = data_make(
-                "model",         "",              DATA_STRING, _X("CurrentCost-TX","CurrentCost TX"), //TODO: it may have different CC Model ? any ref ?
+                "model",         "",              DATA_STRING, model, //TODO: it may have different CC Model ? any ref ?
                 //"rc",            "Rolling Code",  DATA_INT, rc, //TODO: add rolling code b[1] ? test needed
                 _X("id","dev_id"),       "Device Id",     DATA_FORMAT, "%d", DATA_INT, device_id,
                 "power0",       "Power 0",       DATA_FORMAT, "%d W", DATA_INT, watt0,
